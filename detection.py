@@ -1,4 +1,5 @@
 import torch
+import cv2
 import numpy as np
 
 from ultralytics import YOLOv10
@@ -22,6 +23,7 @@ if device.type == "cuda":
         torch.backends.cudnn.allow_tf32 = True
 
 
+show_border = False
 # source files
 source_path = "./assets/"
 image_size = 640
@@ -50,17 +52,48 @@ results = model.predict(
 
 for result in results:
     bbox = result.boxes
-    xyxy = bbox.xyxy
+    xyxy = bbox[0].xyxy
+    box = xyxy[0]
     image = result.orig_img
     predictor.set_image(image)
 
-    input_box = np.array(xyxy[0].tolist())
-
-    masks, _, _ = predictor.predict(
+    masks, scores, _ = predictor.predict(
         point_coords=None,
         point_labels=None,
-        box=input_box[None, :],
+        box=xyxy,
         multimask_output=False,
     )
 
-    print(masks)
+    # save image with bounding box and mask
+    x0, y0 = int(box[0]), int(box[1])
+    x1, y1 = int(box[2]), int(box[3])
+    for i, (mask, score) in enumerate(zip(masks, scores)):
+        color = np.array([30 / 255, 144 / 255, 255 / 255, 0.6])
+
+        h, w = mask.shape[-2:]
+        print(h)
+        print(w)
+        mask = mask.astype(np.uint8)
+        mask_image = np.zeros((h, w, 3), dtype=np.uint8)
+        for i in range(3):  # Apply the color to each channel
+            mask_image[..., i] = mask * int(color[i] * 255)
+
+        if show_border:
+            contours, _ = cv2.findContours(
+                mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE
+            )
+            # Try to smooth contours
+            contours = [
+                cv2.approxPolyDP(
+                    contour, epsilon=0.01 * cv2.arcLength(contour, True), closed=True
+                )
+                for contour in contours
+            ]
+            mask_image = cv2.drawContours(
+                mask_image, contours, -1, (255, 255, 255), thickness=2
+            )
+
+        image = cv2.addWeighted(image, 1.0, mask_image, color[3], 0)
+
+    cv2.rectangle(image, (x0, y0), (x1, y1), color=(0, 255, 0), thickness=2)
+    cv2.imwrite("./assets/image.jpg", image)
