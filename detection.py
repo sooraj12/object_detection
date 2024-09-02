@@ -1,6 +1,7 @@
 import torch
 import cv2
 import math
+import numpy as np
 
 from ultralytics import YOLOv10
 from sam2.build_sam import build_sam2
@@ -102,6 +103,42 @@ while cap.isOpened():
                 confs.append(conf)
                 cls = int(box.cls[0])
                 oids.append(cls)
+
+                # add segmentation mask to the frame
+                masks, scores, _ = segment_predictor.predict(
+                    point_coords=None,
+                    point_labels=None,
+                    box=box.xyxy,
+                    multimask_output=False,
+                )
+
+                if show_mask:
+                    for i, (mask, score) in enumerate(zip(masks, scores)):
+                        color = np.array([30 / 255, 144 / 255, 255 / 255, 0.6])
+
+                    h, w = mask.shape[-2:]
+                    mask = mask.astype(np.uint8)
+                    mask_image = np.zeros((h, w, 3), dtype=np.uint8)
+                    for i in range(3):
+                        mask_image[..., i] = mask * int(color[i] * 255)
+
+                    if show_border:
+                        contours, _ = cv2.findContours(
+                            mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE
+                        )
+                        contours = [
+                            cv2.approxPolyDP(
+                                contour,
+                                epsilon=0.01 * cv2.arcLength(contour, True),
+                                closed=True,
+                            )
+                            for contour in contours
+                        ]
+                        mask_image = cv2.drawContours(
+                            mask_image, contours, -1, (255, 255, 255), thickness=2
+                        )
+
+                    frame = cv2.addWeighted(frame, 1.0, mask_image, color[3], 0)
 
         xywhs = torch.tensor(xywh_bboxs)
         confidence = torch.tensor(confs)
