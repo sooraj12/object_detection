@@ -1,3 +1,4 @@
+import cv2
 import numpy as np
 
 from deep_sort.utils.parser import get_config
@@ -109,5 +110,44 @@ class Tracking:
         )
         return deepsort
 
-    def draw_boxes(self):
-        pass
+    def draw_boxes(
+        self,
+        frame,
+        bbox_xyxy,
+        identities=None,
+        classID=None,
+        offset=(0, 0),
+    ):
+        for i, box in enumerate(bbox_xyxy):
+            x1, y1, x2, y2 = [int(i) for i in box]
+            x1 += offset[0]
+            y1 += offset[0]
+            x2 += offset[0]
+            y2 += offset[0]
+
+            cx, cy = int((x1 + x2) / 2), int((y1 + y2) / 2)
+            cv2.circle(frame, (cx, cy), 2, (0, 255, 0), cv2.FILLED)
+
+            cls_id = int(classID[i]) if classID is not None else 0
+            id = int(identities[i]) if identities is not None else 0
+            color = self.colors[cls_id]
+            B, G, R = map(int, color)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (B, G, R), 2)
+
+            name = self.class_names[cls_id]
+            label = str(id) + ":" + name
+            textSize = cv2.getTextSize(label, 0, fontScale=0.5, thickness=2)[0]
+            c2 = x1 + textSize[0], y1 - textSize[1] - 3
+            cv2.rectangle(frame, (x1, y1), c2, (B, G, R), -1)
+            cv2.putText(
+                frame,
+                label,
+                (x1, y1 - 2),
+                0,
+                0.5,
+                [255, 255, 255],
+                thickness=1,
+                lineType=cv2.LINE_AA,
+            )
+
+        return frame

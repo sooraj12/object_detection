@@ -1,8 +1,6 @@
 import torch
 import cv2
 import math
-import time
-import numpy as np
 
 from ultralytics import YOLOv10
 from sam2.build_sam import build_sam2
@@ -65,14 +63,14 @@ out = cv2.VideoWriter(
 )
 
 
-ctime = 0
-ptime = 0
-count = 0
 while cap.isOpened():
+    xywh_bboxs = []
+    confs = []
+    oids = []
+    outputs = []
     ret, frame = cap.read()
+
     if ret:
-        count += 1
-        print(f"Frame Count: {count}")
         # get bounding box using yolo
         results = model.predict(
             source=frame,
@@ -91,81 +89,31 @@ while cap.isOpened():
                 # draw bounding box
                 x1, y1, x2, y2 = box.xyxy[0]
                 x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
+
+                cx, cy = int((x1 + x2) / 2), int((y1 + y2) / 2)
+                bbox_width = abs(x1 - x2)
+                bbox_height = abs(y1 - y2)
+                xcycwh = [cx, cy, bbox_width, bbox_height]
+                xywh_bboxs.append(xcycwh)
+
                 conf = math.ceil(box.conf[0] * 100) / 100
+                confs.append(conf)
                 cls = int(box.cls[0])
-                class_name = cls_names[cls]
-                label = f"{class_name}: {conf}"
-                textSize = cv2.getTextSize(label, 0, fontScale=0.5, thickness=2)[0]
-                c2 = x1 + textSize[0], y1 - textSize[1] - 3
-                cv2.rectangle(frame, (x1, y1), c2, (255, 0, 0), -1)
-                cv2.putText(
-                    frame,
-                    label,
-                    (x1, y1 - 2),
-                    0,
-                    0.5,
-                    [255, 255, 255],
-                    thickness=1,
-                    lineType=cv2.LINE_AA,
-                )
-                # add segmentation mask to the frame
-                masks, scores, _ = segment_predictor.predict(
-                    point_coords=None,
-                    point_labels=None,
-                    box=box.xyxy,
-                    multimask_output=False,
-                )
-                if show_mask:
-                    for i, (mask, score) in enumerate(zip(masks, scores)):
-                        color = np.array([30 / 255, 144 / 255, 255 / 255, 0.6])
+                oids.append(cls)
 
-                    h, w = mask.shape[-2:]
-                    mask = mask.astype(np.uint8)
-                    mask_image = np.zeros((h, w, 3), dtype=np.uint8)
-                    for i in range(3):
-                        mask_image[..., i] = mask * int(color[i] * 255)
-
-                    if show_border:
-                        contours, _ = cv2.findContours(
-                            mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE
-                        )
-                        contours = [
-                            cv2.approxPolyDP(
-                                contour,
-                                epsilon=0.01 * cv2.arcLength(contour, True),
-                                closed=True,
-                            )
-                            for contour in contours
-                        ]
-                        mask_image = cv2.drawContours(
-                            mask_image, contours, -1, (255, 255, 255), thickness=2
-                        )
-
-                    frame = cv2.addWeighted(frame, 1.0, mask_image, color[3], 0)
-
-        ctime = time.time()
-        fps = 1 / (ctime - ptime)
-        ptime = ctime
-        # add stats
-        cv2.putText(
-            frame,
-            f"FPS: {str(int(fps))}",
-            (10, 50),
-            cv2.FONT_HERSHEY_PLAIN,
-            3,
-            (255, 0, 0),
-            3,
-        )
-        cv2.putText(
-            frame,
-            f"Frame Count: {str(count)}",
-            (10, 100),
-            cv2.FONT_HERSHEY_PLAIN,
-            3,
-            (255, 0, 255),
-            3,
-        )
+        xywhs = torch.tensor(xywh_bboxs)
+        confidence = torch.tensor(confs)
+        outputs = []
+        if len(xywhs) > 1:
+            outputs = deep_sort.update(xywhs, confidence, oids, frame)
+        if len(outputs) > 0:
+            bbox_xyxy = outputs[:, :4]
+            identities = outputs[:, -2]
+            classID = outputs[:, -1]
+            tracking.draw_boxes(frame, bbox_xyxy, identities, classID)
+            # add segmentation mask to the frame
 
         # write to output file
         out.write(frame)
