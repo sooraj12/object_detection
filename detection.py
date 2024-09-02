@@ -7,6 +7,7 @@ import numpy as np
 from ultralytics import YOLOv10
 from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
+from track import Tracking
 
 
 if torch.cuda.is_available():
@@ -28,7 +29,7 @@ if device.type == "cuda":
 show_border = False
 show_box = True
 show_mask = True
-output_video_path = "./runs/car.mp4"
+output_video_path = "./runs/car1.mp4"
 
 # source files
 source_path = "./assets/car.mp4"
@@ -46,6 +47,10 @@ model: YOLOv10 = YOLOv10(model=model_path)
 # initialize sam2 model
 sam2_model = build_sam2(sam2_cfg, sam2_checkpoint, device=device)
 segment_predictor = SAM2ImagePredictor(sam2_model)
+
+# initialize deepsort tracking model
+tracking = Tracking()
+deep_sort = tracking.initialize_deepsort()
 
 # setup video capture
 cap = cv2.VideoCapture(source_path)
@@ -83,6 +88,7 @@ while cap.isOpened():
             cls_names = result.names
 
             for box in boxes:
+                # draw bounding box
                 x1, y1, x2, y2 = box.xyxy[0]
                 x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
@@ -93,6 +99,16 @@ while cap.isOpened():
                 textSize = cv2.getTextSize(label, 0, fontScale=0.5, thickness=2)[0]
                 c2 = x1 + textSize[0], y1 - textSize[1] - 3
                 cv2.rectangle(frame, (x1, y1), c2, (255, 0, 0), -1)
+                cv2.putText(
+                    frame,
+                    label,
+                    (x1, y1 - 2),
+                    0,
+                    0.5,
+                    [255, 255, 255],
+                    thickness=1,
+                    lineType=cv2.LINE_AA,
+                )
                 # add segmentation mask to the frame
                 masks, scores, _ = segment_predictor.predict(
                     point_coords=None,
@@ -128,20 +144,10 @@ while cap.isOpened():
 
                     frame = cv2.addWeighted(frame, 1.0, mask_image, color[3], 0)
 
-                cv2.putText(
-                    frame,
-                    label,
-                    (x1, y1 - 2),
-                    0,
-                    0.5,
-                    [255, 255, 255],
-                    thickness=1,
-                    lineType=cv2.LINE_AA,
-                )
-
         ctime = time.time()
         fps = 1 / (ctime - ptime)
         ptime = ctime
+        # add stats
         cv2.putText(
             frame,
             f"FPS: {str(int(fps))}",
