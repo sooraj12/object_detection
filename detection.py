@@ -109,7 +109,42 @@ while cap.isOpened():
             identities = outputs[:, -2]
             classID = outputs[:, -1]
             tracking.draw_boxes(frame, bbox_xyxy, identities, classID)
-            # TODO: add segmentation
+            # add segmentation
+            for box in bbox_xyxy:
+                masks, scores, _ = segment_predictor.predict(
+                    point_coords=None,
+                    point_labels=None,
+                    box=box,
+                    multimask_output=False,
+                )
+
+                if show_mask:
+                    for i, (mask, score) in enumerate(zip(masks, scores)):
+                        color = np.array([30 / 255, 144 / 255, 255 / 255, 0.6])
+
+                    h, w = mask.shape[-2:]
+                    mask = mask.astype(np.uint8)
+                    mask_image = np.zeros((h, w, 3), dtype=np.uint8)
+                    for i in range(3):
+                        mask_image[..., i] = mask * int(color[i] * 255)
+
+                if show_border:
+                    contours, _ = cv2.findContours(
+                        mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE
+                    )
+                    contours = [
+                        cv2.approxPolyDP(
+                            contour,
+                            epsilon=0.01 * cv2.arcLength(contour, True),
+                            closed=True,
+                        )
+                        for contour in contours
+                    ]
+                    mask_image = cv2.drawContours(
+                        mask_image, contours, -1, (255, 255, 255), thickness=2
+                    )
+
+                frame = cv2.addWeighted(frame, 1.0, mask_image, color[3], 0)
 
         # write to output file
         out.write(frame)
