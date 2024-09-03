@@ -26,7 +26,6 @@ if device.type == "cuda":
 
 
 show_border = False
-show_box = True
 show_mask = True
 output_video_path = "./runs/car1.mp4"
 
@@ -79,19 +78,17 @@ while cap.isOpened():
             conf=conf_threshold,
             save=False,
         )
+        segment_predictor.set_image(frame)
 
         # draw box on the frame
         for result in results:
             boxes = result.boxes
-            segment_predictor.set_image(frame)
             cls_names = result.names
 
             for box in boxes:
                 # draw bounding box
                 x1, y1, x2, y2 = box.xyxy[0]
                 x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
 
                 cx, cy = int((x1 + x2) / 2), int((y1 + y2) / 2)
                 bbox_width = abs(x1 - x2)
@@ -104,53 +101,15 @@ while cap.isOpened():
                 cls = int(box.cls[0])
                 oids.append(cls)
 
-                # add segmentation mask to the frame
-                masks, scores, _ = segment_predictor.predict(
-                    point_coords=None,
-                    point_labels=None,
-                    box=box.xyxy,
-                    multimask_output=False,
-                )
-
-                if show_mask:
-                    for i, (mask, score) in enumerate(zip(masks, scores)):
-                        color = np.array([30 / 255, 144 / 255, 255 / 255, 0.6])
-
-                    h, w = mask.shape[-2:]
-                    mask = mask.astype(np.uint8)
-                    mask_image = np.zeros((h, w, 3), dtype=np.uint8)
-                    for i in range(3):
-                        mask_image[..., i] = mask * int(color[i] * 255)
-
-                    if show_border:
-                        contours, _ = cv2.findContours(
-                            mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE
-                        )
-                        contours = [
-                            cv2.approxPolyDP(
-                                contour,
-                                epsilon=0.01 * cv2.arcLength(contour, True),
-                                closed=True,
-                            )
-                            for contour in contours
-                        ]
-                        mask_image = cv2.drawContours(
-                            mask_image, contours, -1, (255, 255, 255), thickness=2
-                        )
-
-                    frame = cv2.addWeighted(frame, 1.0, mask_image, color[3], 0)
-
         xywhs = torch.tensor(xywh_bboxs)
         confidence = torch.tensor(confs)
-        outputs = []
-        if len(xywhs) > 1:
-            outputs = deep_sort.update(xywhs, confidence, oids, frame)
+        outputs = deep_sort.update(xywhs, confidence, oids, frame)
         if len(outputs) > 0:
             bbox_xyxy = outputs[:, :4]
             identities = outputs[:, -2]
             classID = outputs[:, -1]
             tracking.draw_boxes(frame, bbox_xyxy, identities, classID)
-            # add segmentation mask to the frame
+            # TODO: add segmentation
 
         # write to output file
         out.write(frame)

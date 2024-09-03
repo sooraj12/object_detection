@@ -63,6 +63,11 @@ class DeepSort(object):
             bbox_tlwh = bbox_xywh.copy()
         elif isinstance(bbox_xywh, torch.Tensor):
             bbox_tlwh = bbox_xywh.clone()
+
+        if bbox_tlwh.ndimension() == 1:
+            if bbox_tlwh.numel() == 0:
+                return bbox_tlwh
+            
         bbox_tlwh[:, 0] = bbox_xywh[:, 0] - bbox_xywh[:, 2] / 2.
         bbox_tlwh[:, 1] = bbox_xywh[:, 1] - bbox_xywh[:, 3] / 2.
         return bbox_tlwh
